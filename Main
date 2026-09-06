@@ -251,6 +251,14 @@ local function restore()
     local state=morphState
     morphState=nil
     if state then
+        if state.mode=="items" then
+            for _,item in ipairs(state.added or {}) do if item.Parent then item:Destroy() end end
+            if state.character.Parent then
+                for _,item in ipairs(state.originals or {}) do item.Parent=state.character end
+                task.defer(applyNameTag,state.character)
+            end
+            return true
+        end
         for _,connection in ipairs(state.connections or {}) do connection:Disconnect() end
         for _,track in pairs(state.tracks or {}) do pcall(function() track:Stop(0.1); track:Destroy() end) end
         for part,value in pairs(state.hidden) do
@@ -604,6 +612,51 @@ button("Morph into avatar", function()
     local humanoid=character and character:FindFirstChildOfClass("Humanoid")
     local actualRoot=character and character:FindFirstChild("HumanoidRootPart")
     assert(humanoid and actualRoot and humanoid.Health>0,"Wait for your character to spawn.")
+    do
+        morphBusy=true
+        report("Loading avatar clothing and accessories...")
+        local generated
+        local ok,err=pcall(function()
+            generated=Players:CreateHumanoidModelFromUserIdAsync(Players:GetUserIdFromNameAsync(name))
+            assert(player.Character==character and humanoid.Health>0,"Your character changed while the avatar was loading.")
+            restore()
+            local state={mode="items",character=character,humanoid=humanoid,originals={},added={}}
+            morphState=state
+            local function wearable(obj)
+                return obj:IsA("Accessory") or obj:IsA("Shirt") or obj:IsA("Pants") or obj:IsA("ShirtGraphic")
+            end
+            for _,item in ipairs(character:GetChildren()) do
+                if wearable(item) then
+                    table.insert(state.originals,item)
+                    item.Parent=nil
+                end
+            end
+            for _,item in ipairs(generated:GetChildren()) do
+                if wearable(item) then
+                    local clone=item:Clone()
+                    if clone:IsA("Accessory") then
+                        local handle=clone:FindFirstChild("Handle")
+                        if handle and handle:IsA("BasePart") then
+                            handle.CanCollide=false; handle.CanTouch=false; handle.CanQuery=false; handle.Massless=true
+                        end
+                        local added=pcall(function() humanoid:AddAccessory(clone) end)
+                        if not added then clone.Parent=character end
+                    else
+                        clone.Parent=character
+                    end
+                    table.insert(state.added,clone)
+                end
+            end
+            generated:Destroy(); generated=nil
+            if nameTagState.enabled then applyNameTag(character) end
+            report("Wearing clothing and accessories from "..name)
+        end)
+        if generated then generated:Destroy() end
+        if not ok then restore() end
+        morphBusy=false
+        if not ok then error(err) end
+        return
+    end
     local version=morphVersion
     local model
     morphBusy=true
@@ -681,14 +734,10 @@ button("Morph into avatar", function()
             local track=state.tracks[which]
             if track then track.Looped=which~="jump"; track:Play(0.12) end
         end
-        table.insert(state.connections,Run.RenderStepped:Connect(function()
         local function syncVisual()
             if morphState~=state or player.Character~=character or not actualRoot.Parent then restore(); return end
             local camera=workspace.CurrentCamera
             if camera and model.Parent~=camera then model.Parent=camera end
-            visualRoot.CFrame=actualRoot.CFrame+Vector3.new(0,heightOffset,0)
-            visualRoot.AssemblyLinearVelocity=Vector3.zero
-            visualRoot.AssemblyAngularVelocity=Vector3.zero
             for _,part in ipairs(visualParts) do
                 if part.Parent then
                     part.CanCollide=false
