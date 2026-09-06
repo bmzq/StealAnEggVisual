@@ -682,6 +682,7 @@ button("Morph into avatar", function()
             if track then track.Looped=which~="jump"; track:Play(0.12) end
         end
         table.insert(state.connections,Run.RenderStepped:Connect(function()
+        local function syncVisual()
             if morphState~=state or player.Character~=character or not actualRoot.Parent then restore(); return end
             local camera=workspace.CurrentCamera
             if camera and model.Parent~=camera then model.Parent=camera end
@@ -696,6 +697,15 @@ button("Morph into avatar", function()
                     part.Massless=true
                 end
             end
+            visualRoot.Anchored=true
+            visualRoot.CFrame=actualRoot.CFrame+Vector3.new(0,heightOffset,0)
+        end
+        -- Run collision isolation before physics, then refresh the pose for the
+        -- rendered frame. This prevents one-frame accessory contacts.
+        table.insert(state.connections,Run.PreSimulation:Connect(syncVisual))
+        table.insert(state.connections,Run.RenderStepped:Connect(function()
+            if morphState~=state or player.Character~=character or not actualRoot.Parent then return end
+            visualRoot.CFrame=actualRoot.CFrame+Vector3.new(0,heightOffset,0)
             for part in pairs(state.hidden) do
                 if part.Parent then part.LocalTransparencyModifier=1 end
             end
