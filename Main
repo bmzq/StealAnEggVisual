@@ -36,7 +36,6 @@ make("UICorner", {CornerRadius=UDim.new(0,12)}, panel)
 make("UIStroke", {Color=Color3.fromRGB(91,77,139),Thickness=1,Transparency=0.3},panel)
 make("UIGradient", {Color=ColorSequence.new(Color3.fromRGB(27,24,40),Color3.fromRGB(13,16,24)),Rotation=65},panel)
 local title = make("TextLabel", {Size=UDim2.new(1,-28,0,32), Position=UDim2.fromOffset(16,7), BackgroundTransparency=1, Text="AURA VISUALS", TextXAlignment=Enum.TextXAlignment.Left, TextColor3=Color3.new(1,1,1), Font=Enum.Font.GothamBlack, TextSize=22,Active=true}, panel)
-local subtitle=make("TextLabel",{Size=UDim2.new(1,-75,0,18),Position=UDim2.fromOffset(16,37),BackgroundTransparency=1,Text="discord.gg/TEaADtK8aB",TextXAlignment=Enum.TextXAlignment.Left,TextColor3=Color3.fromRGB(173,142,255),Font=Enum.Font.GothamMedium,TextSize=11},panel)
 local subtitle=make("TextLabel",{Size=UDim2.new(1,-175,0,18),Position=UDim2.fromOffset(16,37),BackgroundTransparency=1,Text="discord.gg/TEaADtK8aB",TextXAlignment=Enum.TextXAlignment.Left,TextColor3=Color3.fromRGB(173,142,255),Font=Enum.Font.GothamMedium,TextSize=11},panel)
 local copyInvite=make("TextButton",{AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-48,0,34),Size=UDim2.fromOffset(64,22),BackgroundColor3=Color3.fromRGB(55,44,80),BorderSizePixel=0,Text="COPY",TextColor3=Color3.fromRGB(220,207,244),Font=Enum.Font.GothamBold,TextSize=10,AutoButtonColor=false},panel)
 make("UICorner",{CornerRadius=UDim.new(0,6)},copyInvite)
@@ -638,6 +637,10 @@ button("Morph into avatar", function()
         visualHumanoid:ChangeState(Enum.HumanoidStateType.Physics)
         local visualIsR15=visualHumanoid.RigType==Enum.HumanoidRigType.R15
         local heightOffset=rootClearance(model,visualHumanoid,visualRoot)-rootClearance(character,humanoid,actualRoot)
+        -- Preserve Roblox's generated Shirt/Pants/ShirtGraphic instances, but
+        -- remove the extra Humanoid so game character systems cannot target it.
+        visualHumanoid:Destroy()
+        make("AnimationController",{Name="AuraAnimationController"},model)
         restore()
         local state={
             model=model,
@@ -649,11 +652,11 @@ button("Morph into avatar", function()
             nameDistance=humanoid.DisplayDistanceType,
         }
         morphState=state
-        model.Name=player.Name
-        local heightOffset=rootClearance(model,visualHumanoid,visualRoot)-rootClearance(character,humanoid,actualRoot)
         model.Name="AuraMorph_"..player.UserId
         visualRoot.CFrame=actualRoot.CFrame+Vector3.new(0,heightOffset,0)
-        model.Parent=world
+        -- Camera descendants render normally but do not participate in the
+        -- live map's character scans and physics interactions.
+        model.Parent=workspace.CurrentCamera or world
         local function hidePart(obj)
             if obj:IsA("BasePart") then
                 state.hidden[obj]=obj.LocalTransparencyModifier
@@ -663,7 +666,6 @@ button("Morph into avatar", function()
         for _,obj in ipairs(character:GetDescendants()) do hidePart(obj) end
         humanoid.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None
         task.defer(applyNameTag,model)
-        local r15=visualHumanoid.RigType==Enum.HumanoidRigType.R15
         local r15=visualIsR15
         local function chosen(value,fallback) return value and value>0 and value or fallback end
         state.tracks.idle=loadTrack(model,chosen(targetDescription.IdleAnimation,r15 and 2510197257 or 180435571),Enum.AnimationPriority.Idle)
@@ -681,7 +683,19 @@ button("Morph into avatar", function()
         end
         table.insert(state.connections,Run.RenderStepped:Connect(function()
             if morphState~=state or player.Character~=character or not actualRoot.Parent then restore(); return end
+            local camera=workspace.CurrentCamera
+            if camera and model.Parent~=camera then model.Parent=camera end
             visualRoot.CFrame=actualRoot.CFrame+Vector3.new(0,heightOffset,0)
+            visualRoot.AssemblyLinearVelocity=Vector3.zero
+            visualRoot.AssemblyAngularVelocity=Vector3.zero
+            for _,part in ipairs(visualParts) do
+                if part.Parent then
+                    part.CanCollide=false
+                    part.CanTouch=false
+                    part.CanQuery=false
+                    part.Massless=true
+                end
+            end
             for part in pairs(state.hidden) do
                 if part.Parent then part.LocalTransparencyModifier=1 end
             end
