@@ -1,5 +1,4 @@
--- Install as a LocalScript in StarterPlayer > StarterPlayerScripts.
--- Local visual scenes only. No server events or admin permissions are used.
+-- Join the discord for more visuals and request visuals
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local Run = game:GetService("RunService")
