@@ -638,9 +638,34 @@ button("Morph into avatar", function()
                         local handle=clone:FindFirstChild("Handle")
                         if handle and handle:IsA("BasePart") then
                             handle.CanCollide=false; handle.CanTouch=false; handle.CanQuery=false; handle.Massless=true
+                            handle.Anchored=false; handle.CanCollide=false; handle.CanTouch=false; handle.CanQuery=false; handle.Massless=true
                         end
                         local added=pcall(function() humanoid:AddAccessory(clone) end)
                         if not added then clone.Parent=character end
+                        clone.Parent=character
+                        if handle then
+                            for _,joint in ipairs(handle:GetChildren()) do
+                                if joint:IsA("Weld") and joint.Name=="AccessoryWeld" then joint:Destroy() end
+                            end
+                            local handleAttachment=handle:FindFirstChildOfClass("Attachment")
+                            local bodyAttachment
+                            if handleAttachment then
+                                for _,candidate in ipairs(character:GetDescendants()) do
+                                    if candidate~=handleAttachment and candidate:IsA("Attachment") and candidate.Name==handleAttachment.Name and not candidate:IsDescendantOf(clone) then
+                                        bodyAttachment=candidate; break
+                                    end
+                                end
+                            end
+                            local bodyPart=bodyAttachment and bodyAttachment.Parent
+                            if bodyPart and bodyPart:IsA("BasePart") then
+                                make("Weld",{Name="AccessoryWeld",Part0=handle,Part1=bodyPart,C0=handleAttachment.CFrame,C1=bodyAttachment.CFrame},handle)
+                            else
+                                local head=character:FindFirstChild("Head")
+                                if head and head:IsA("BasePart") then
+                                    make("Weld",{Name="AccessoryWeld",Part0=handle,Part1=head,C0=clone.AttachmentPoint,C1=CFrame.new()},handle)
+                                end
+                            end
+                        end
                     else
                         clone.Parent=character
                     end
