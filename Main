@@ -1,4 +1,5 @@
--- Join the discord for more visuals and request visuals
+-- Install as a LocalScript in StarterPlayer > StarterPlayerScripts.
+-- Local visual scenes only. No server events or admin permissions are used.
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local Run = game:GetService("RunService")
@@ -36,6 +37,9 @@ make("UIStroke", {Color=Color3.fromRGB(91,77,139),Thickness=1,Transparency=0.3},
 make("UIGradient", {Color=ColorSequence.new(Color3.fromRGB(27,24,40),Color3.fromRGB(13,16,24)),Rotation=65},panel)
 local title = make("TextLabel", {Size=UDim2.new(1,-28,0,32), Position=UDim2.fromOffset(16,7), BackgroundTransparency=1, Text="AURA VISUALS", TextXAlignment=Enum.TextXAlignment.Left, TextColor3=Color3.new(1,1,1), Font=Enum.Font.GothamBlack, TextSize=22,Active=true}, panel)
 local subtitle=make("TextLabel",{Size=UDim2.new(1,-75,0,18),Position=UDim2.fromOffset(16,37),BackgroundTransparency=1,Text="discord.gg/TEaADtK8aB",TextXAlignment=Enum.TextXAlignment.Left,TextColor3=Color3.fromRGB(173,142,255),Font=Enum.Font.GothamMedium,TextSize=11},panel)
+local subtitle=make("TextLabel",{Size=UDim2.new(1,-175,0,18),Position=UDim2.fromOffset(16,37),BackgroundTransparency=1,Text="discord.gg/TEaADtK8aB",TextXAlignment=Enum.TextXAlignment.Left,TextColor3=Color3.fromRGB(173,142,255),Font=Enum.Font.GothamMedium,TextSize=11},panel)
+local copyInvite=make("TextButton",{AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-48,0,34),Size=UDim2.fromOffset(64,22),BackgroundColor3=Color3.fromRGB(55,44,80),BorderSizePixel=0,Text="COPY",TextColor3=Color3.fromRGB(220,207,244),Font=Enum.Font.GothamBold,TextSize=10,AutoButtonColor=false},panel)
+make("UICorner",{CornerRadius=UDim.new(0,6)},copyInvite)
 local closeButton=make("TextButton",{AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-12,0,12),Size=UDim2.fromOffset(28,28),BackgroundColor3=Color3.fromRGB(58,42,78),BorderSizePixel=0,Text="X",TextColor3=Color3.fromRGB(220,207,244),Font=Enum.Font.GothamBold,TextSize=12,AutoButtonColor=false},panel)
 make("UICorner",{CornerRadius=UDim.new(0,8)},closeButton)
 closeButton.MouseEnter:Connect(function() Tween:Create(closeButton,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(119,45,66)}):Play() end)
@@ -51,6 +55,14 @@ local statusDot=make("Frame",{AnchorPoint=Vector2.new(0,0.5),Position=UDim2.new(
 make("UICorner",{CornerRadius=UDim.new(1,0)},statusDot)
 local status = make("TextLabel", {Position=UDim2.fromOffset(25,0), Size=UDim2.new(1,-33,1,0), BackgroundTransparency=1, Text="Ready / Local visuals",TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd, TextSize=11, Font=Enum.Font.GothamMedium, TextColor3=Color3.fromRGB(190,194,211)}, statusFrame)
 local function report(text) if alive then status.Text = text end end
+copyInvite.Activated:Connect(function()
+    if typeof(setclipboard)=="function" then
+        setclipboard("https://discord.gg/TEaADtK8aB")
+        report("Discord invite copied.")
+    else
+        report("Clipboard access is unavailable in this client.")
+    end
+end)
 local function clearNameTag()
     if activeNameTag then activeNameTag:Destroy(); activeNameTag=nil end
 end
@@ -620,6 +632,12 @@ button("Morph into avatar", function()
         visualHumanoid.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None
         visualHumanoid.HealthDisplayType=Enum.HumanoidHealthDisplayType.AlwaysOff
         visualHumanoid.AutoRotate=false
+        visualHumanoid.BreakJointsOnDeath=false
+        visualHumanoid.PlatformStand=true
+        pcall(function() visualHumanoid.EvaluateStateMachine=false end)
+        visualHumanoid:ChangeState(Enum.HumanoidStateType.Physics)
+        local visualIsR15=visualHumanoid.RigType==Enum.HumanoidRigType.R15
+        local heightOffset=rootClearance(model,visualHumanoid,visualRoot)-rootClearance(character,humanoid,actualRoot)
         restore()
         local state={
             model=model,
@@ -633,6 +651,7 @@ button("Morph into avatar", function()
         morphState=state
         model.Name=player.Name
         local heightOffset=rootClearance(model,visualHumanoid,visualRoot)-rootClearance(character,humanoid,actualRoot)
+        model.Name="AuraMorph_"..player.UserId
         visualRoot.CFrame=actualRoot.CFrame+Vector3.new(0,heightOffset,0)
         model.Parent=world
         local function hidePart(obj)
@@ -645,6 +664,7 @@ button("Morph into avatar", function()
         humanoid.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None
         task.defer(applyNameTag,model)
         local r15=visualHumanoid.RigType==Enum.HumanoidRigType.R15
+        local r15=visualIsR15
         local function chosen(value,fallback) return value and value>0 and value or fallback end
         state.tracks.idle=loadTrack(model,chosen(targetDescription.IdleAnimation,r15 and 2510197257 or 180435571),Enum.AnimationPriority.Idle)
         state.tracks.run=loadTrack(model,chosen(targetDescription.RunAnimation,r15 and 2510198475 or 180426354),Enum.AnimationPriority.Movement)
@@ -787,6 +807,16 @@ toggle.Activated:Connect(function()
         Tween:Create(panelScale,TweenInfo.new(0.2,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
     end
 end)
+table.insert(connections,UIS.InputBegan:Connect(function(inputObject,processed)
+    if processed or UIS:GetFocusedTextBox() then return end
+    if inputObject.KeyCode==Enum.KeyCode.V then
+        panel.Visible=not panel.Visible
+        if panel.Visible then
+            panelScale.Scale=0.94
+            Tween:Create(panelScale,TweenInfo.new(0.2,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
+        end
+    end
+end))
 table.insert(connections, player.CharacterAdded:Connect(function(character)
     restore()
     if nameTagState.enabled then task.defer(applyNameTag,character) end
