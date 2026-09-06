@@ -1,0 +1,828 @@
+-- Install as a LocalScript in StarterPlayer > StarterPlayerScripts.
+-- Local visual scenes only. No server events or admin permissions are used.
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local Run = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Tween = game:GetService("TweenService")
+local UserService = game:GetService("UserService")
+local player = Players.LocalPlayer
+local pg = player:WaitForChild("PlayerGui")
+local old = pg:FindFirstChild("LocalSceneGui")
+if old then old:Destroy() end
+
+local alive, generation = true, 0
+local connections = {}
+local egg, bot, startPoint
+local morphState
+local morphVersion=0
+local morphBusy=false
+local alias = player.DisplayName
+local spawnedEggs = {}
+local eggNests = {}
+local badgeMode = "Auto"
+local nameTagState={enabled=false,text="👑CREATOR",color=Color3.fromRGB(255,0,0)}
+local activeNameTag
+local function make(class, props, parent)
+    local obj = Instance.new(class)
+    for key, value in pairs(props) do obj[key] = value end
+    obj.Parent = parent
+    return obj
+end
+local gui = make("ScreenGui", {Name="LocalSceneGui", ResetOnSpawn=false, DisplayOrder=100}, pg)
+local world = make("Folder", {Name="LocalSceneObjects"}, workspace)
+local panel = make("Frame", {Size=UDim2.fromOffset(420, 650), Position=UDim2.fromOffset(20,54), BackgroundColor3=Color3.fromRGB(20,23,33), BorderSizePixel=0,ClipsDescendants=true}, gui)
+make("UICorner", {CornerRadius=UDim.new(0,12)}, panel)
+make("UIStroke", {Color=Color3.fromRGB(91,77,139),Thickness=1,Transparency=0.3},panel)
+make("UIGradient", {Color=ColorSequence.new(Color3.fromRGB(27,24,40),Color3.fromRGB(13,16,24)),Rotation=65},panel)
+local title = make("TextLabel", {Size=UDim2.new(1,-28,0,32), Position=UDim2.fromOffset(16,7), BackgroundTransparency=1, Text="AURA VISUALS", TextXAlignment=Enum.TextXAlignment.Left, TextColor3=Color3.new(1,1,1), Font=Enum.Font.GothamBlack, TextSize=22,Active=true}, panel)
+local subtitle=make("TextLabel",{Size=UDim2.new(1,-75,0,18),Position=UDim2.fromOffset(16,37),BackgroundTransparency=1,Text="discord.gg/TEaADtK8aB",TextXAlignment=Enum.TextXAlignment.Left,TextColor3=Color3.fromRGB(173,142,255),Font=Enum.Font.GothamMedium,TextSize=11},panel)
+local closeButton=make("TextButton",{AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-12,0,12),Size=UDim2.fromOffset(28,28),BackgroundColor3=Color3.fromRGB(58,42,78),BorderSizePixel=0,Text="X",TextColor3=Color3.fromRGB(220,207,244),Font=Enum.Font.GothamBold,TextSize=12,AutoButtonColor=false},panel)
+make("UICorner",{CornerRadius=UDim.new(0,8)},closeButton)
+closeButton.MouseEnter:Connect(function() Tween:Create(closeButton,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(119,45,66)}):Play() end)
+closeButton.MouseLeave:Connect(function() Tween:Create(closeButton,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(58,42,78)}):Play() end)
+closeButton.Activated:Connect(function() panel.Visible=false end)
+make("Frame",{Size=UDim2.new(1,-32,0,2),Position=UDim2.fromOffset(16,61),BorderSizePixel=0,BackgroundColor3=Color3.fromRGB(152,117,255)},panel)
+local scroll = make("ScrollingFrame", {Position=UDim2.fromOffset(12,72), Size=UDim2.new(1,-24,1,-128), BackgroundTransparency=1, BorderSizePixel=0, ScrollBarThickness=3,ScrollBarImageColor3=Color3.fromRGB(152,117,255), AutomaticCanvasSize=Enum.AutomaticSize.Y, CanvasSize=UDim2.new(),ScrollingDirection=Enum.ScrollingDirection.Y}, panel)
+make("UIListLayout", {Padding=UDim.new(0,7), SortOrder=Enum.SortOrder.LayoutOrder}, scroll)
+local statusFrame=make("Frame",{Position=UDim2.new(0,12,1,-46),Size=UDim2.new(1,-24,0,34),BackgroundColor3=Color3.fromRGB(25,27,39),BorderSizePixel=0},panel)
+make("UICorner",{CornerRadius=UDim.new(0,8)},statusFrame)
+make("UIStroke",{Color=Color3.fromRGB(92,78,128),Transparency=0.55},statusFrame)
+local statusDot=make("Frame",{AnchorPoint=Vector2.new(0,0.5),Position=UDim2.new(0,10,0.5,0),Size=UDim2.fromOffset(7,7),BackgroundColor3=Color3.fromRGB(128,255,188),BorderSizePixel=0},statusFrame)
+make("UICorner",{CornerRadius=UDim.new(1,0)},statusDot)
+local status = make("TextLabel", {Position=UDim2.fromOffset(25,0), Size=UDim2.new(1,-33,1,0), BackgroundTransparency=1, Text="Ready / Local visuals",TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd, TextSize=11, Font=Enum.Font.GothamMedium, TextColor3=Color3.fromRGB(190,194,211)}, statusFrame)
+local function report(text) if alive then status.Text = text end end
+local function clearNameTag()
+    if activeNameTag then activeNameTag:Destroy(); activeNameTag=nil end
+end
+local function applyNameTag(character)
+    clearNameTag()
+    if not nameTagState.enabled or not character then return end
+    local head=character:FindFirstChild("Head") or character:WaitForChild("Head",5)
+    if not head then return end
+    for _,tagName in ipairs({"CreatorTag","CartiCreatorTag","AuraEditableNameTag"}) do
+        local oldTag=head:FindFirstChild(tagName)
+        if oldTag then oldTag:Destroy() end
+    end
+    local billboard=make("BillboardGui",{
+        Name="AuraEditableNameTag",
+        Adornee=head,
+        AlwaysOnTop=true,
+        LightInfluence=0,
+        MaxDistance=150,
+        Size=UDim2.fromOffset(300,48),
+        StudsOffsetWorldSpace=Vector3.new(0,3.25,0),
+    },head)
+    local label=make("TextLabel",{
+        Name="Name",
+        Size=UDim2.fromScale(1,1),
+        BackgroundTransparency=1,
+        Text=nameTagState.text,
+        TextColor3=nameTagState.color,
+        TextStrokeColor3=Color3.new(0,0,0),
+        TextStrokeTransparency=0,
+        Font=Enum.Font.GothamBlack,
+        TextSize=25,
+        TextScaled=false,
+    },billboard)
+    make("UIStroke",{Color=Color3.new(0,0,0),Thickness=1.5},label)
+    activeNameTag=billboard
+end
+local function parseTagColor(text)
+    local value=text:match("^%s*(.-)%s*$")
+    local hex=value:gsub("#","")
+    if hex:match("^[%x][%x][%x][%x][%x][%x]$") then
+        return Color3.fromRGB(
+            tonumber(hex:sub(1,2),16),
+            tonumber(hex:sub(3,4),16),
+            tonumber(hex:sub(5,6),16)
+        )
+    end
+    local r,g,b=value:match("^(%d+)%s*,%s*(%d+)%s*,%s*(%d+)$")
+    r,g,b=tonumber(r),tonumber(g),tonumber(b)
+    if r and g and b and r<=255 and g<=255 and b<=255 then
+        return Color3.fromRGB(r,g,b)
+    end
+    error("Use a hex color like #FF0000 or RGB like 255,0,0.")
+end
+local order = 0
+local activeSectionRows
+local function row(class, text)
+    order = order + 1
+    local obj = make(class, {LayoutOrder=order, Size=UDim2.new(1,-6,0,34), BackgroundColor3=Color3.fromRGB(37,43,60), BorderSizePixel=0, Text=text, TextColor3=Color3.new(1,1,1), TextSize=14, Font=Enum.Font.Gotham}, scroll)
+    make("UICorner", {CornerRadius=UDim.new(0,9)}, obj)
+    if class~="TextLabel" then make("UIStroke",{Color=Color3.fromRGB(87,81,111),Transparency=0.65},obj) end
+    if activeSectionRows then table.insert(activeSectionRows,obj) end
+    return obj
+end
+local function section(text)
+    activeSectionRows=nil
+    local sectionRows={}
+    local expanded=true
+    local label = row("TextButton", "-  "..text)
+    label.Size=UDim2.new(1,-6,0,38)
+    label.BackgroundColor3=Color3.fromRGB(48,38,72)
+    label.TextXAlignment=Enum.TextXAlignment.Left
+    label.TextColor3=Color3.fromRGB(214,199,255)
+    label.Font=Enum.Font.GothamBold
+    label.TextSize=12
+    label.AutoButtonColor=false
+    make("UIPadding",{PaddingLeft=UDim.new(0,12)},label)
+    label.Activated:Connect(function()
+        expanded=not expanded
+        label.Text=(expanded and "-  " or "+  ")..text
+        for _,item in ipairs(sectionRows) do
+            if expanded then
+                item.Visible=item:GetAttribute("AuraSectionVisible")~=false
+            else
+                item:SetAttribute("AuraSectionVisible",item.Visible)
+                item.Visible=false
+            end
+        end
+    end)
+    activeSectionRows=sectionRows
+end
+local function input(placeholder)
+    local box = row("TextBox", "")
+    box.PlaceholderText=placeholder
+    box.ClearTextOnFocus=false
+    box.PlaceholderColor3=Color3.fromRGB(148,144,166)
+    box.BackgroundColor3=Color3.fromRGB(23,25,36)
+    box.Focused:Connect(function() Tween:Create(box,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(35,30,52)}):Play() end)
+    box.FocusLost:Connect(function() Tween:Create(box,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(23,25,36)}):Play() end)
+    return box
+end
+local function button(text, fn)
+    local b = row("TextButton", text)
+    local busy = false
+    b.AutoButtonColor=false
+    local scale=make("UIScale",{Scale=1},b)
+    b.MouseEnter:Connect(function() Tween:Create(b,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(73,56,110)}):Play() end)
+    b.MouseLeave:Connect(function() Tween:Create(b,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(37,43,60)}):Play() end)
+    b.MouseButton1Down:Connect(function() Tween:Create(scale,TweenInfo.new(0.08),{Scale=0.975}):Play() end)
+    b.MouseButton1Up:Connect(function() Tween:Create(scale,TweenInfo.new(0.12,Enum.EasingStyle.Back),{Scale=1}):Play() end)
+    b.Activated:Connect(function()
+        if busy then return end
+        busy=true
+        local ok, err = pcall(fn)
+        if not ok then report(tostring(err):gsub("^.-:%d+: ", "")) end
+        busy=false
+    end)
+    return b
+end
+local function root()
+    local char = player.Character
+    local r = char and char:FindFirstChild("HumanoidRootPart")
+    assert(r, "Wait for your character to spawn.")
+    return r
+end
+local function username(box)
+    local name=box.Text:match("^%s*(.-)%s*$"):gsub("^@", "")
+    assert(#name>0 and #name<=20 and name:match("^[%w_]+$"), "Enter a Roblox username, not a display name.")
+    return name
+end
+local function avatar(name)
+    local id=Players:GetUserIdFromNameAsync(name)
+    local description=Players:GetHumanoidDescriptionFromUserIdAsync(id)
+    local model=Players:CreateHumanoidModelFromDescriptionAsync(description,Enum.HumanoidRigType.R15)
+    description:Destroy()
+    for _,obj in ipairs(model:GetDescendants()) do
+        if obj:IsA("BaseScript") then obj:Destroy()
+        elseif obj:IsA("BasePart") then
+            obj.CanCollide=false; obj.CanTouch=false; obj.CanQuery=false
+        end
+    end
+    model.HumanoidRootPart.Anchored=true
+    model.Humanoid.DisplayName=name
+    model.Humanoid.HealthDisplayType=Enum.HumanoidHealthDisplayType.AlwaysOff
+    return model
+end
+local function ground(position)
+    local params=RaycastParams.new()
+    params.FilterType=Enum.RaycastFilterType.Exclude
+    local exclusions={world}
+    if player.Character then table.insert(exclusions,player.Character) end
+    params.FilterDescendantsInstances=exclusions
+    params.RespectCanCollide=true
+    local hit=workspace:Raycast(position+Vector3.new(0,8,0),Vector3.new(0,-250,0),params)
+    return hit and hit.Position or position-Vector3.new(0,3,0)
+end
+local function loadTrack(model,id,priority)
+    local humanoid=model:FindFirstChildOfClass("Humanoid")
+    local controller=humanoid or model:FindFirstChildOfClass("AnimationController") or make("AnimationController",{},model)
+    local animator=controller:FindFirstChildOfClass("Animator") or make("Animator",{},controller)
+    local animation=make("Animation",{AnimationId="rbxassetid://"..id},model)
+    local track=animator:LoadAnimation(animation)
+    track.Looped=true; track.Priority=priority
+    return track
+end
+local function addTrail(actor)
+    local assets=RS:FindFirstChild("Assets")
+    local trails=assets and assets:FindFirstChild("Trails")
+    local template=trails and trails:FindFirstChild("EternalTrail")
+    local source=template and template:FindFirstChildWhichIsA("Trail",true)
+    local r=actor.HumanoidRootPart
+    local a=make("Attachment",{Position=Vector3.new(-0.65,0,0.6)},r)
+    local b=make("Attachment",{Position=Vector3.new(0.65,0,0.6)},r)
+    local trail=source and source:Clone() or make("Trail",{Color=ColorSequence.new(Color3.fromRGB(178,126,255)),Lifetime=0.3},r)
+    trail.Attachment0=a; trail.Attachment1=b; trail.Enabled=true; trail.Parent=r
+    return trail
+end
+local function clearScene()
+    generation=generation+1
+    if bot then bot:Destroy(); bot=nil end
+    for model in pairs(spawnedEggs) do model:Destroy() end
+    for _,nest in pairs(eggNests) do nest:Destroy() end
+    eggNests={}
+    spawnedEggs={}; egg=nil
+end
+local function restore()
+    morphVersion=morphVersion+1
+    local state=morphState
+    morphState=nil
+    if state then
+        for _,connection in ipairs(state.connections or {}) do connection:Disconnect() end
+        for _,track in pairs(state.tracks or {}) do pcall(function() track:Stop(0.1); track:Destroy() end) end
+        for part,value in pairs(state.hidden) do
+            if part.Parent then part.LocalTransparencyModifier=value end
+        end
+        if state.humanoid.Parent then state.humanoid.DisplayDistanceType=state.nameDistance end
+        if state.model then state.model:Destroy() end
+        if state.character.Parent then task.defer(applyNameTag,state.character) end
+    end
+    return true
+end
+local function rootClearance(character,humanoid,rootPart)
+    local leg=character:FindFirstChild("Left Leg")
+    return humanoid.HipHeight+rootPart.Size.Y/2+
+        (humanoid.RigType==Enum.HumanoidRigType.R6 and leg and leg.Size.Y or 0)
+end
+section("01 / RARE EGG COLLECTION")
+-- Labels and template keys confirmed against the supplied place's asset configs.
+local choices={
+    {"Demonic Egg / Admin event","Demon Imp"},
+    {"Unicorn Egg / Divine","Unicorn"},
+    {"Kitsune Egg / Divine","Kitsune"},
+    {"Nightflame Egg / Divine","Godzilla"},
+    {"Eternal Lunar Dragon Egg / Eternal","Eternal Lunar Dragon"},
+    {"Lava Dragon Egg / Eternal","Dragon"},
+    {"Phoenix Egg / Eternal","Ascended Vermilion Phoenix"},
+    {"Ice Dragon Egg / Eternal","Ice Dragon"},
+    {"Oni Tiger Egg / Eternal","Oni Tiger"},
+    {"Strawberry Elephant Egg / Eternal","Strawberry Elephant"},
+    {"Mosasaurus Egg / Eternal","Mosasaurus"},
+    {"Kraken Egg / Secret","Kraken"},
+    {"Cosmic Dragon Egg / Secret","Cave Dragon"},
+    {"Cerberus Egg / Secret","Cerberus"},
+    {"TRex Egg / Secret","TyrannosaurusRex"},
+    {"Archdemon Egg / Divine","Archdemon Dragon"},
+    {"Dreadscale / Monster Egg","Monster Egg"},
+    {"Mecha Egg","Mecha Egg"},
+    {"Shattered / Crystal Egg","Crystal Egg"},
+}
+local selected=1
+local picker
+local optionButtons={}
+picker=button("Egg: "..choices[selected][1],function()
+    for _,b in ipairs(optionButtons) do b.Visible=not b.Visible end
+end)
+for index,choice in ipairs(choices) do
+    local b=button(choice[1],function()
+        selected=index; picker.Text="Egg: "..choice[1]
+        for _,item in ipairs(optionButtons) do item.Visible=false end
+    end)
+    b.Visible=false; table.insert(optionButtons,b)
+end
+local sizeBox=input("Egg scale (0.25 to 10)")
+sizeBox.Text="4"
+local function readEggScale()
+    local value=tonumber(sizeBox.Text)
+    assert(value and value==value and value>=0.25 and value<=10,"Egg scale must be from 0.25 to 10.")
+    return value
+end
+button("Decrease egg scale",function()
+    local value=math.max(0.25,(tonumber(sizeBox.Text) or 4)-0.25)
+    sizeBox.Text=tostring(value); report("Egg scale set to "..value.."x")
+end)
+button("Increase egg scale",function()
+    local value=math.min(10,(tonumber(sizeBox.Text) or 4)+0.25)
+    sizeBox.Text=tostring(value); report("Egg scale set to "..value.."x")
+end)
+local quantityBox=input("Batch quantity")
+quantityBox.Text="5"
+local useNests=true
+local nestButton
+nestButton=button("Nests: On",function()
+    useNests=not useNests; nestButton.Text="Nests: "..(useNests and "On" or "Off")
+end)
+local useDivine=true
+local divineButton
+divineButton=button("Divine particles: On",function()
+    useDivine=not useDivine; divineButton.Text="Divine particles: "..(useDivine and "On" or "Off")
+end)
+local countLabel=row("TextLabel","Spawned eggs: 0")
+local function updateCount()
+    local count=0
+    for model in pairs(spawnedEggs) do if model.Parent then count=count+1 else spawnedEggs[model]=nil end end
+    countLabel.Text="Spawned eggs: "..count
+end
+local function visibleBounds(model)
+    local lo=Vector3.new(math.huge,math.huge,math.huge)
+    local hi=Vector3.new(-math.huge,-math.huge,-math.huge)
+    for _,part in ipairs(model:GetDescendants()) do
+        if part:IsA("BasePart") and part.Transparency<1 then
+            for x=-1,1,2 do for y=-1,1,2 do for z=-1,1,2 do
+                local point=part.CFrame:PointToWorldSpace(part.Size*Vector3.new(x,y,z)*0.5)
+                lo=Vector3.new(math.min(lo.X,point.X),math.min(lo.Y,point.Y),math.min(lo.Z,point.Z))
+                hi=Vector3.new(math.max(hi.X,point.X),math.max(hi.Y,point.Y),math.max(hi.Z,point.Z))
+            end end end
+        end
+    end
+    assert(lo.X~=math.huge,"Model has no visible geometry.")
+    return lo,hi
+end
+local function seatModel(model,position)
+    local lo,hi=visibleBounds(model)
+    model:PivotTo(model:GetPivot()+position-Vector3.new((lo.X+hi.X)/2,lo.Y,(lo.Z+hi.Z)/2))
+end
+local function prepareModel(model)
+    for _,obj in ipairs(model:GetDescendants()) do
+        if obj:IsA("BaseScript") or obj:IsA("ProximityPrompt") then obj:Destroy()
+        elseif obj:IsA("BasePart") then obj.Anchored=true; obj.CanCollide=false; obj.CanTouch=false; obj.CanQuery=false end
+    end
+end
+local function addStealPrompt(model)
+    local target=model:FindFirstChild("Hitbox",true)
+        or model:FindFirstChild("HitBox",true)
+        or model:FindFirstChild("Handle",true)
+        or model:FindFirstChildWhichIsA("BasePart",true)
+    assert(target and target:IsA("BasePart"),"Egg prompt needs a BasePart.")
+    local prompt=make("ProximityPrompt",{
+        Name="AuraStealPrompt",
+        ActionText="Steal",
+        ObjectText="Egg",
+        KeyboardKeyCode=Enum.KeyCode.E,
+        GamepadKeyCode=Enum.KeyCode.ButtonX,
+        HoldDuration=1.2,
+        MaxActivationDistance=9,
+        RequiresLineOfSight=false,
+        ClickablePrompt=true,
+        Exclusivity=Enum.ProximityPromptExclusivity.OnePerButton,
+        Style=Enum.ProximityPromptStyle.Default,
+    },target)
+    prompt.Triggered:Connect(function(triggeringPlayer)
+        if triggeringPlayer==player then
+            egg=model
+            report("Egg selected for the next Bot Heist.")
+        end
+    end)
+    return prompt
+end
+local function decorateEgg(model,position)
+    local assets=RS:FindFirstChild("Assets")
+    if useDivine then
+        local particles=assets and assets:FindFirstChild("Particles")
+        local rarity=particles and particles:FindFirstChild("EggRarityVFX")
+        local source=rarity and rarity:FindFirstChild("RarityNumber9+")
+        local hitbox=model:FindFirstChild("Hitbox",true) or model:FindFirstChild("HitBox",true)
+        if source and hitbox and hitbox:IsA("BasePart") then
+            local holder=Instance.new("Model")
+            for _,child in ipairs(source:GetChildren()) do child:Clone().Parent=holder end
+            holder:ScaleTo(hitbox.Size.Y/math.max(tonumber(source:GetAttribute("HitboxSizeY")) or 5,1))
+            for _,obj in ipairs(holder:GetDescendants()) do
+                if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Light") then obj.Enabled=true end
+            end
+            for _,child in ipairs(holder:GetChildren()) do child.Parent=hitbox end
+            holder:Destroy()
+        end
+    end
+    if not useNests then return end
+    local objects=workspace:FindFirstChild("__OBJECTS")
+    local areas=objects and objects:FindFirstChild("Areas")
+    local guards=areas and areas:FindFirstChild("GuardAreas")
+    local source=guards and guards:FindFirstChild("NestModel",true)
+    if not source or not source:IsA("Model") then return end
+    local nest=source:Clone()
+    local ok,err=pcall(function()
+        prepareModel(nest)
+        local lo,hi=visibleBounds(model)
+        local nlo,nhi=visibleBounds(nest)
+        local span=hi-lo; local nspan=nhi-nlo
+        nest:ScaleTo(nest:GetScale()*math.max(span.X,span.Z)*1.2/math.max(nspan.X,nspan.Z,0.01))
+        seatModel(nest,position)
+        nest.Name="AuraNest"; nest.Parent=world
+        local seat=nest:FindFirstChild("EggSpotBottom",true)
+        local _,top=visibleBounds(nest)
+        local seatY=seat and seat:IsA("BasePart") and math.max(position.Y,seat.Position.Y) or top.Y
+        seatModel(model,Vector3.new(position.X,seatY,position.Z))
+        eggNests[model]=nest
+    end)
+    if not ok then nest:Destroy(); warn("Aura nest: "..tostring(err)) end
+end
+local function spawnEgg(positionOverride)
+    local eggScale=readEggScale()
+    local position=positionOverride or ground(root().Position)
+    local assets=RS:FindFirstChild("Assets")
+    local models=assets and assets:FindFirstChild("Models")
+    local eggs=models and models:FindFirstChild("Eggs")
+    local template=eggs and eggs:FindFirstChild(choices[selected][2])
+    assert(template, "Selected egg asset is unavailable in this place.")
+    local clone=template:Clone()
+    if not clone:IsA("Model") then
+        local wrapper=Instance.new("Model"); clone.Parent=wrapper; clone=wrapper
+    end
+    for _,obj in ipairs(clone:GetDescendants()) do
+        if obj:IsA("BaseScript") or obj:IsA("ProximityPrompt") then obj:Destroy()
+        elseif obj:IsA("BasePart") then obj.Anchored=true; obj.CanCollide=false; obj.CanTouch=false; obj.CanQuery=false end
+    end
+    assert(clone:FindFirstChildWhichIsA("BasePart",true), "Egg template contains no parts.")
+    -- Keep the authored orientation, including the rotated primary-part PivotOffset.
+    -- Replacing it with an identity rotation was tipping the Demonic Egg sideways.
+    -- Match the reference script: preserve every egg's authored proportions
+    -- and enlarge the complete model uniformly by four times.
+    clone:ScaleTo(clone:GetScale()*eggScale)
+    local minY=math.huge
+    local minX,minZ,maxX,maxZ=math.huge,math.huge,-math.huge,-math.huge
+    for _,part in ipairs(clone:GetDescendants()) do
+        if part:IsA("BasePart") and part.Transparency<1 then
+            for x=-1,1,2 do for y=-1,1,2 do for z=-1,1,2 do
+                local p=part.CFrame:PointToWorldSpace(part.Size*Vector3.new(x,y,z)*0.5)
+                minY=math.min(minY,p.Y); minX=math.min(minX,p.X); maxX=math.max(maxX,p.X)
+                minZ=math.min(minZ,p.Z); maxZ=math.max(maxZ,p.Z)
+            end end end
+        end
+    end
+    if minY==math.huge then clone:Destroy(); error("Egg has no visible geometry.") end
+    local shift=position-Vector3.new((minX+maxX)/2,minY,(minZ+maxZ)/2)
+    clone:PivotTo(clone:GetPivot()+shift)
+    egg=clone; egg.Name="AuraEgg"; egg.Parent=world; spawnedEggs[egg]=true
+    egg:SetAttribute("AuraGround",position)
+    decorateEgg(egg,position)
+    addStealPrompt(egg)
+    updateCount()
+    report("Spawned "..choices[selected][1])
+    return egg
+end
+button("Spawn selected egg here",function() spawnEgg() end)
+button("Spawn batch in front",function()
+    local quantity=tonumber(quantityBox.Text)
+    assert(quantity and quantity>=1 and quantity<=100 and quantity%1==0,"Choose 1 to 100 eggs per batch. Repeat for more.")
+    local cf=root().CFrame
+    local token=generation
+    local columns=math.min(quantity,5)
+    local stride=math.max(12,28*(readEggScale()/4))
+    for index=1,quantity do
+        if not alive or token~=generation then return end
+        local column=(index-1)%columns
+        local rowIndex=math.floor((index-1)/columns)
+        local spot=cf.Position+cf.RightVector*((column-(columns-1)/2)*stride)+cf.LookVector*(16+rowIndex*stride)
+        spawnEgg(ground(spot))
+        if index%5==0 then Run.Heartbeat:Wait() end
+    end
+    report("Spawned "..quantity.." eggs.")
+end)
+button("Despawn all eggs",function() clearScene(); updateCount(); report("All eggs removed. Bot scene cancelled.") end)
+section("02 / BOT HEIST")
+local botName=input("Bot avatar username")
+local botSpeed=input("Bot speed in studs/second")
+botSpeed.Text="80"
+button("Set bot start here", function() startPoint=ground(root().Position); report("Bot start saved. Move away to place the egg.") end)
+button("Run bot → steal egg → return", function()
+    if not egg or not egg.Parent then egg=next(spawnedEggs) end
+    assert(egg and egg.Parent, "Spawn an egg first.")
+    assert(not bot, "A bot scene is already running.")
+    local speed=tonumber(botSpeed.Text)
+    assert(speed and speed>=1 and speed<=300,"Bot speed must be between 1 and 300.")
+    local token=generation
+    local targetEgg=egg
+    local eggRotation=targetEgg:GetPivot().Rotation
+    local name=username(botName)
+    report("Loading bot avatar…")
+    local actor=avatar(name)
+    if not alive or token~=generation or not targetEgg.Parent then actor:Destroy(); return end
+    bot=actor; actor.Parent=world
+    local origin=startPoint or ground(root().Position+root().CFrame.LookVector*30)
+    local eggPosition=targetEgg:GetAttribute("AuraGround") or ground(targetEgg:GetPivot().Position)
+    local towards=Vector3.new(eggPosition.X-origin.X,0,eggPosition.Z-origin.Z)
+    local _,eggSize=targetEgg:GetBoundingBox()
+    local standOff=math.min(math.max(eggSize.X,eggSize.Z)/2+2,math.max(0,towards.Magnitude-1))
+    local destination=ground(eggPosition-(towards.Magnitude>0.01 and towards.Unit*standOff or Vector3.zero))
+    local height=actor.Humanoid.HipHeight+actor.HumanoidRootPart.Size.Y/2
+    local pivotOffset=actor.HumanoidRootPart.CFrame:ToObjectSpace(actor:GetPivot())
+    actor:PivotTo(CFrame.new(origin+Vector3.new(0,height,0))*pivotOffset)
+    local runTrack,idleTrack,carryTrack,trail
+    local carryLo,carryHi=visibleBounds(targetEgg)
+    local carryHalfHeight=(carryHi.Y-carryLo.Y)/2
+    local carryPivotOffset=targetEgg:GetPivot().Position-(carryLo+carryHi)/2
+    local function carryCFrame()
+        local r=actor.HumanoidRootPart
+        local facing=r.CFrame.Rotation
+        local center=r.Position+r.CFrame.LookVector*(math.max(eggSize.X,eggSize.Z)/2+1.3)
+            +Vector3.new(0,math.max(0,carryHalfHeight-height+0.5),0)
+        return CFrame.new(center+facing:VectorToWorldSpace(carryPivotOffset))*facing*eggRotation
+    end
+    local function travel(a,b,carry)
+        local duration=math.max((b-a).Magnitude/speed,0.01)
+        idleTrack:Stop(0.1)
+        runTrack:Play(0.1,1,math.clamp(speed/32,1,2.5))
+        trail.Enabled=true
+        local elapsed=0
+        while elapsed<duration do
+            elapsed=elapsed+Run.Heartbeat:Wait()
+            if not alive or token~=generation or not actor.Parent then return false end
+            local pos=ground(a:Lerp(b,math.min(elapsed/duration,1)))+Vector3.new(0,height,0)
+            local direction=Vector3.new(b.X-a.X,0,b.Z-a.Z)
+            local cf=direction.Magnitude>0.01 and CFrame.lookAt(pos,pos+direction) or CFrame.new(pos)
+            actor:PivotTo(cf*pivotOffset)
+            if carry and targetEgg.Parent then targetEgg:PivotTo(carryCFrame()) end
+        end
+        runTrack:Stop(0.12); idleTrack:Play(0.12); trail.Enabled=false
+        return true
+    end
+    local ok,err=pcall(function()
+        runTrack=loadTrack(actor,2510198475,Enum.AnimationPriority.Movement)
+        idleTrack=loadTrack(actor,2510197257,Enum.AnimationPriority.Idle)
+        carryTrack=loadTrack(actor,507768375,Enum.AnimationPriority.Action)
+        trail=addTrail(actor)
+        report(name.." is running to the egg…")
+        if not travel(origin,destination,false) then return end
+        report(name.." is picking up the egg...")
+        local stealPrompt=targetEgg:FindFirstChild("AuraStealPrompt",true)
+        if stealPrompt then stealPrompt:Destroy() end
+        idleTrack:Stop(0.15)
+        carryTrack:Play(0.25)
+        local pickupStart=targetEgg:GetPivot()
+        local pickupTime=os.clock()
+        local deadline=os.clock()+2
+        while os.clock()<deadline do
+            Run.Heartbeat:Wait()
+            if not alive or generation~=token or not targetEgg.Parent then return end
+            local alpha=math.clamp((os.clock()-pickupTime-0.3)/1.2,0,1)
+            alpha=alpha*alpha*(3-2*alpha)
+            targetEgg:PivotTo(pickupStart:Lerp(carryCFrame(),alpha))
+        end
+        -- The nest is a separate scene object and intentionally remains behind.
+        report(name.." stole the egg!")
+        if not travel(destination,origin,true) then return end
+        if targetEgg.Parent then targetEgg:Destroy() end
+        spawnedEggs[targetEgg]=nil
+        if egg==targetEgg then egg=next(spawnedEggs) end
+        updateCount()
+        report("Bot returned and despawned.")
+    end)
+    if runTrack then runTrack:Stop(); runTrack:Destroy() end
+    if idleTrack then idleTrack:Stop(); idleTrack:Destroy() end
+    if carryTrack then carryTrack:Stop(); carryTrack:Destroy() end
+    actor:Destroy()
+    if bot==actor then bot=nil end
+    if not ok then error(err) end
+end)
+button("Cancel bot / clear scene", function() clearScene(); updateCount(); report("Scene cleared.") end)
+section("03 / LOCAL IDENTITY")
+local aliasBox=input("Name for announcements only")
+button("Apply announcement name", function()
+    local value=aliasBox.Text:match("^%s*(.-)%s*$")
+    assert(#value>0 and #value<=40, "Use a name between 1 and 40 characters.")
+    alias=value
+    report("Announcement name set to "..alias)
+end)
+local morphName=input("Avatar username to morph into")
+button("Morph into avatar", function()
+    assert(not morphBusy,"Wait for the avatar to finish loading.")
+    local name=username(morphName)
+    local character=player.Character
+    local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+    local actualRoot=character and character:FindFirstChild("HumanoidRootPart")
+    assert(humanoid and actualRoot and humanoid.Health>0,"Wait for your character to spawn.")
+    local version=morphVersion
+    local model
+    morphBusy=true
+    report("Loading complete local avatar...")
+    local ok,err=pcall(function()
+        model=Players:CreateHumanoidModelFromUserIdAsync(Players:GetUserIdFromNameAsync(name))
+        if not alive or version~=morphVersion or player.Character~=character then model:Destroy(); model=nil; return end
+        local visualHumanoid=model:FindFirstChildOfClass("Humanoid")
+        local visualRoot=model:FindFirstChild("HumanoidRootPart")
+        assert(visualHumanoid and visualRoot,"The avatar service returned an incomplete model.")
+        local targetDescription=visualHumanoid:GetAppliedDescription()
+        local visualParts={}
+        for _,obj in ipairs(model:GetDescendants()) do
+            if obj:IsA("BaseScript") then obj:Destroy()
+            elseif obj:IsA("BasePart") then
+                obj.CanTouch=false; obj.CanQuery=false
+                obj.Anchored=false
+                obj.CanCollide=false
+                obj.Massless=true
+                table.insert(visualParts,obj)
+            end
+        end
+        visualRoot.CanCollide=false
+        visualRoot.Anchored=true
+        visualHumanoid.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None
+        visualHumanoid.HealthDisplayType=Enum.HumanoidHealthDisplayType.AlwaysOff
+        visualHumanoid.AutoRotate=false
+        restore()
+        local state={
+            model=model,
+            character=character,
+            humanoid=humanoid,
+            hidden={},
+            connections={},
+            tracks={},
+            nameDistance=humanoid.DisplayDistanceType,
+        }
+        morphState=state
+        model.Name=player.Name
+        local heightOffset=rootClearance(model,visualHumanoid,visualRoot)-rootClearance(character,humanoid,actualRoot)
+        visualRoot.CFrame=actualRoot.CFrame+Vector3.new(0,heightOffset,0)
+        model.Parent=world
+        local function hidePart(obj)
+            if obj:IsA("BasePart") then
+                state.hidden[obj]=obj.LocalTransparencyModifier
+                obj.LocalTransparencyModifier=1
+            end
+        end
+        for _,obj in ipairs(character:GetDescendants()) do hidePart(obj) end
+        humanoid.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None
+        task.defer(applyNameTag,model)
+        local r15=visualHumanoid.RigType==Enum.HumanoidRigType.R15
+        local function chosen(value,fallback) return value and value>0 and value or fallback end
+        state.tracks.idle=loadTrack(model,chosen(targetDescription.IdleAnimation,r15 and 2510197257 or 180435571),Enum.AnimationPriority.Idle)
+        state.tracks.run=loadTrack(model,chosen(targetDescription.RunAnimation,r15 and 2510198475 or 180426354),Enum.AnimationPriority.Movement)
+        state.tracks.jump=loadTrack(model,chosen(targetDescription.JumpAnimation,r15 and 2510197830 or 125750702),Enum.AnimationPriority.Action)
+        state.tracks.fall=loadTrack(model,chosen(targetDescription.FallAnimation,r15 and 2510195892 or 180436148),Enum.AnimationPriority.Movement)
+        targetDescription:Destroy()
+        local current
+        local function play(which)
+            if current==which then return end
+            for key,track in pairs(state.tracks) do if key~=which and track.IsPlaying then track:Stop(0.12) end end
+            current=which
+            local track=state.tracks[which]
+            if track then track.Looped=which~="jump"; track:Play(0.12) end
+        end
+        table.insert(state.connections,Run.RenderStepped:Connect(function()
+            if morphState~=state or player.Character~=character or not actualRoot.Parent then restore(); return end
+            visualRoot.CFrame=actualRoot.CFrame+Vector3.new(0,heightOffset,0)
+            for part in pairs(state.hidden) do
+                if part.Parent then part.LocalTransparencyModifier=1 end
+            end
+            local humanState=humanoid:GetState()
+            if humanState==Enum.HumanoidStateType.Jumping then play("jump")
+            elseif humanState==Enum.HumanoidStateType.Freefall then play("fall")
+            elseif Vector3.new(actualRoot.AssemblyLinearVelocity.X,0,actualRoot.AssemblyLinearVelocity.Z).Magnitude>0.8 then
+                play("run")
+                if state.tracks.run then state.tracks.run:AdjustSpeed(math.clamp(actualRoot.AssemblyLinearVelocity.Magnitude/16,0.65,2.5)) end
+            else play("idle") end
+        end))
+        table.insert(state.connections,humanoid.Died:Connect(function() if morphState==state then restore() end end))
+        report("Local avatar overlay active: "..name)
+        model=nil -- ownership transferred to morphState
+    end)
+    if model then
+        if morphState and morphState.model==model then restore() else model:Destroy() end
+    end
+    morphBusy=false
+    if not ok then error(err) end
+end)
+button("Restore original avatar", function()
+    if restore() then report("Original appearance restored.") end
+end)
+section("04 / EDITABLE NAMETAG")
+local tagTextInput=input("Nametag text")
+tagTextInput.Text="👑CREATOR"
+local tagColorInput=input("Color: #FF0000 or 255,0,0")
+tagColorInput.Text="#FF0000"
+local tagPreview=row("TextLabel","👑CREATOR")
+tagPreview.TextColor3=Color3.fromRGB(255,0,0)
+tagPreview.TextStrokeColor3=Color3.new(0,0,0)
+tagPreview.TextStrokeTransparency=0
+tagPreview.Font=Enum.Font.GothamBlack
+local function refreshTagPreview()
+    local text=tagTextInput.Text:match("^%s*(.-)%s*$")
+    tagPreview.Text=(text~="" and text or "👑CREATOR")
+    local ok,color=pcall(parseTagColor,tagColorInput.Text)
+    if ok then tagPreview.TextColor3=color end
+end
+tagTextInput:GetPropertyChangedSignal("Text"):Connect(refreshTagPreview)
+tagColorInput:GetPropertyChangedSignal("Text"):Connect(refreshTagPreview)
+button("Apply nametag",function()
+    local text=tagTextInput.Text:match("^%s*(.-)%s*$")
+    assert(#text>=1 and #text<=40,"Nametag must contain 1 to 40 characters.")
+    nameTagState.text=text
+    nameTagState.color=parseTagColor(tagColorInput.Text)
+    nameTagState.enabled=true
+    applyNameTag((morphState and morphState.model) or player.Character)
+    report("Nametag applied locally.")
+end)
+button("Use red CREATOR preset",function()
+    tagTextInput.Text="👑CREATOR"; tagColorInput.Text="#FF0000"
+    nameTagState.text="👑CREATOR"; nameTagState.color=Color3.fromRGB(255,0,0); nameTagState.enabled=true
+    refreshTagPreview(); applyNameTag((morphState and morphState.model) or player.Character)
+    report("Red CREATOR nametag applied.")
+end)
+button("Remove nametag",function()
+    nameTagState.enabled=false; clearNameTag(); report("Nametag removed.")
+end)
+section("05 / ADMIN ANNOUNCEMENT")
+local badgeButton
+badgeButton=button("Verified badge: Auto",function()
+    badgeMode=badgeMode=="Auto" and "On" or badgeMode=="On" and "Off" or "Auto"
+    badgeButton.Text="Verified badge: "..badgeMode
+end)
+local verifiedCache={}
+local function hasBadge(name)
+    if badgeMode=="On" then return true end
+    if badgeMode=="Off" then return false end
+    local key=string.lower(name)
+    if verifiedCache[key]~=nil then return verifiedCache[key] end
+    local ok,result=pcall(function()
+        local id=name==player.DisplayName and player.UserId or Players:GetUserIdFromNameAsync(name)
+        for _,info in ipairs(UserService:GetUserInfosByUserIdsAsync({id})) do
+            if info.Id==id then return info.HasVerifiedBadge==true end
+        end
+        error("No user information returned")
+    end)
+    if ok then verifiedCache[key]=result; return result end
+    return false
+end
+local recipient=input("Username to receive simulated admin")
+button("Show admin announcement", function()
+    local name=username(recipient)
+    Players:GetUserIdFromNameAsync(name)
+    if not alive then return end
+    local function escape(text)
+        return (text:gsub("&","&amp;"):gsub("<","&lt;"):gsub(">","&gt;"))
+    end
+    local sender=alias
+    local verified=hasBadge(sender)
+    if not alive then return end
+    local badge=verified and (" "..utf8.char(0xE000)) or ""
+    local text=sender..badge.." has given "..name.." admin!"
+    local client=RS:FindFirstChild("Client")
+    local notifications=client and client:FindFirstChild("Notifications")
+    local module=notifications and notifications:FindFirstChild("Message")
+    local ok=false
+    if module then
+        ok=pcall(function() require(module).Top({ShowShadow=true,Message=escape(text),Time=6,Color=Color3.new(1,1,1)}) end)
+    end
+    if not ok then
+        local banner=make("TextLabel",{AnchorPoint=Vector2.new(0.5,0),Position=UDim2.fromScale(0.5,0.08),Size=UDim2.new(0.8,0,0,60),BackgroundColor3=Color3.fromRGB(20,23,33),Text=text,TextWrapped=true,TextSize=22,Font=Enum.Font.GothamBold,TextColor3=Color3.new(1,1,1)},gui)
+        make("UICorner",{CornerRadius=UDim.new(0,8)},banner)
+        task.delay(6,function() banner:Destroy() end)
+    end
+    report("Announcement shown locally.")
+end)
+local toggle=make("TextButton",{Position=UDim2.fromOffset(20,12),Size=UDim2.fromOffset(140,32),Text="Aura Visuals",TextSize=14,Font=Enum.Font.Gotham,TextColor3=Color3.new(1,1,1),BackgroundColor3=Color3.fromRGB(61,44,91)},gui)
+make("UICorner",{CornerRadius=UDim.new(0,8)},toggle)
+make("UIStroke",{Color=Color3.fromRGB(163,119,255),Transparency=0.35},toggle)
+local toggleScale=make("UIScale",{Scale=1},toggle)
+local panelScale=make("UIScale",{Scale=1},panel)
+toggle.MouseEnter:Connect(function() Tween:Create(toggle,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(91,58,137)}):Play() end)
+toggle.MouseLeave:Connect(function() Tween:Create(toggle,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(61,44,91)}):Play() end)
+toggle.MouseButton1Down:Connect(function() Tween:Create(toggleScale,TweenInfo.new(0.08),{Scale=0.96}):Play() end)
+toggle.MouseButton1Up:Connect(function() Tween:Create(toggleScale,TweenInfo.new(0.12,Enum.EasingStyle.Back),{Scale=1}):Play() end)
+toggle.Activated:Connect(function()
+    panel.Visible=not panel.Visible
+    if panel.Visible then
+        panelScale.Scale=0.94
+        Tween:Create(panelScale,TweenInfo.new(0.2,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Scale=1}):Play()
+    end
+end)
+table.insert(connections, player.CharacterAdded:Connect(function(character)
+    restore()
+    if nameTagState.enabled then task.defer(applyNameTag,character) end
+    clearScene(); updateCount()
+end))
+local dragging,dragOrigin,panelOrigin
+local function clampPosition(x,y)
+    local camera=workspace.CurrentCamera
+    local size=camera and camera.ViewportSize or Vector2.new(800,600)
+    return UDim2.fromOffset(math.clamp(x,0,math.max(0,size.X-panel.AbsoluteSize.X)),math.clamp(y,0,math.max(0,size.Y-panel.AbsoluteSize.Y-36)))
+end
+title.InputBegan:Connect(function(inputObject)
+    if inputObject.UserInputType==Enum.UserInputType.MouseButton1 or inputObject.UserInputType==Enum.UserInputType.Touch then
+        dragging=inputObject; dragOrigin=inputObject.Position; panelOrigin=panel.Position
+    end
+end)
+table.insert(connections,UIS.InputChanged:Connect(function(inputObject)
+    if dragging and (inputObject==dragging or inputObject.UserInputType==Enum.UserInputType.MouseMovement) then
+        local delta=inputObject.Position-dragOrigin
+        panel.Position=clampPosition(panelOrigin.X.Offset+delta.X,panelOrigin.Y.Offset+delta.Y)
+    end
+end))
+table.insert(connections,UIS.InputEnded:Connect(function(inputObject) if inputObject==dragging then dragging=nil end end))
+local function resize()
+    local camera=workspace.CurrentCamera
+    if camera then panel.Size=UDim2.fromOffset(math.min(420,camera.ViewportSize.X-40),math.min(650,camera.ViewportSize.Y-90)); panel.Position=clampPosition(panel.Position.X.Offset,panel.Position.Y.Offset) end
+end
+panel.Position=UDim2.fromOffset(20,54)
+resize()
+if workspace.CurrentCamera then table.insert(connections,workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(resize)) end
+gui.Destroying:Connect(function()
+    alive=false
+    clearNameTag()
+    for _,connection in ipairs(connections) do connection:Disconnect() end
+    clearScene(); restore()
+    world:Destroy()
+end)
+button("Unload GUI and restore", function() gui:Destroy() end)
